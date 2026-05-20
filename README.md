@@ -52,11 +52,13 @@ ros2 run handeye_calibration_ros pose_to_pose_stamped.py \
   --output-topic /robot/current_pose
 ```
 
-## GUI 采集
+## Eye-in-Hand GUI 采集与标定
 
-推荐使用 GUI 采集样本：
+当前 GUI 专用于眼在手上标定：相机安装在机械臂末端，标定结果输出 `camera -> gripper/TCP`。
+
+启动 GUI：
 ```bash
-ros2 launch handeye_calibration_ros gui.launch.py
+ros2 launch handeye_calibration_ros eye_in_hand_gui.launch.py
 ```
 
 界面包含：
@@ -85,7 +87,7 @@ ros2 launch handeye_calibration_ros gui.launch.py
 ```
 这个服务需要由具体机械臂的适配节点实现。它的作用是让机械臂移动到下一个标定位姿。如果暂时没有这个服务，也可以手动移动机械臂，然后只使用 GUI 的保存按钮。
 
-采集完成后，可以在 GUI 里设置棋盘格参数并点击 `开始标定`。GUI 会从当前输出路径读取图片和 `poses.csv`，计算手眼结果并保存 `handeye_result.yaml`。
+采集完成后，可以在 GUI 里设置棋盘格参数并点击 `开始标定`。GUI 会从当前输出路径读取图片和 `poses.csv`，计算眼在手上手眼结果并保存 `handeye_result.yaml`。
 
 GUI 可选算法：
 
@@ -94,6 +96,39 @@ GUI 可选算法：
 - `horaud`
 - `andreff`
 - `daniilidis`
+
+## Eye-to-Hand GUI 采集与标定
+
+眼在手外版本使用独立 GUI：
+
+```bash
+ros2 launch handeye_calibration_ros eye_to_hand_gui.launch.py
+```
+
+该版本用于相机固定在机械臂外部的场景。当前实现按下面假设计算：
+
+- 相机固定在外部
+- 标定板随机械臂末端运动
+- `poses.csv` 中记录的是常见的 `gripper -> base` 末端位姿
+- 如果你的机械臂提供的是反方向位姿，可以勾选 `反转机械臂位姿`
+
+输出结果默认保存为：
+
+```text
+eye_to_hand_result.yaml
+```
+
+主要输出：
+
+- `R_base2cam`
+- `t_base2cam`
+- `R_cam2base`
+- `t_cam2base`
+
+Eye-to-Hand GUI 可选算法：
+
+- `shah`
+- `li`
 
 采集结果目录示例：
 ```text

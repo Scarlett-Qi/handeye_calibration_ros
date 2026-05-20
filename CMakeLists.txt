@@ -37,7 +37,8 @@ install(PROGRAMS
   scripts/quaternion_euler_converter.py
   scripts/rpy_to_matrix.py
   scripts/pose_to_pose_stamped.py
-  scripts/handeye_gui.py
+  scripts/eye_in_hand_gui.py
+  scripts/eye_to_hand_gui.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

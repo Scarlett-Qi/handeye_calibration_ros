@@ -83,7 +83,7 @@ def image_msg_to_bgr(msg: Image) -> np.ndarray:
 
 class HandeyeQtNode(Node):
     def __init__(self):
-        super().__init__("handeye_gui_qt")
+        super().__init__("eye_to_hand_gui")
         self._lock = threading.Lock()
         self._image: Optional[Image] = None
         self._pose: Optional[Pose] = None
@@ -182,7 +182,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.sample_index = 0
         self.last_image_count = -1
 
-        self.setWindowTitle("Hand-Eye Calibration Collector")
+        self.setWindowTitle("Eye-to-Hand Calibration Collector")
         self.resize(1120, 1100)
         self.setMinimumSize(1000, 1400)
 
@@ -205,13 +205,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self.calib_square.setSingleStep(0.001)
         self.calib_square.setValue(0.035)
         self.calib_method = QtWidgets.QComboBox()
-        self.calib_method.addItems(["tsai", "park", "horaud", "andreff", "daniilidis"])
-        self.calib_method.setCurrentText("daniilidis")
+        self.calib_method.addItems(["shah", "li"])
+        self.calib_method.setCurrentText("shah")
         self.calib_euler_order = QtWidgets.QComboBox()
         self.calib_euler_order.addItems(ALL_EULER_ORDERS)
         self.calib_euler_order.setCurrentText("zyx")
         self.calib_invert = QtWidgets.QCheckBox("反转机械臂位姿")
-        self.calib_output = QtWidgets.QLineEdit("handeye_result.yaml")
+        self.calib_output = QtWidgets.QLineEdit("eye_to_hand_result.yaml")
         self.calib_result = QtWidgets.QPlainTextEdit()
         self.calib_result.setReadOnly(True)
         self.calib_result.setFixedHeight(120)
@@ -313,13 +313,13 @@ class MainWindow(QtWidgets.QMainWindow):
         calib_top.addWidget(self.calib_method, 1, 1)
         calib_top.addWidget(QtWidgets.QLabel("欧拉顺序"), 1, 2)
         calib_top.addWidget(self.calib_euler_order, 1, 3)
-        calib_top.addWidget(self.calib_invert, 1, 4)
+        calib_top.addWidget(self.calib_invert, 2, 1)
         start_calib = QtWidgets.QPushButton("开始标定")
         start_calib.setMinimumHeight(36)
         start_calib.clicked.connect(self.start_calibration)
-        calib_top.addWidget(start_calib, 1, 5)
-        calib_top.addWidget(QtWidgets.QLabel("结果文件"), 2, 0)
-        calib_top.addWidget(self.calib_output, 2, 1, 1, 5)
+        calib_top.addWidget(start_calib, 2, 5)
+        calib_top.addWidget(QtWidgets.QLabel("结果文件"), 3, 0)
+        calib_top.addWidget(self.calib_output, 3, 1, 1, 5)
         calib_top.setColumnStretch(5, 1)
         calib_layout.addLayout(calib_top)
         calib_layout.addWidget(self.calib_result)
@@ -461,49 +461,54 @@ class MainWindow(QtWidgets.QMainWindow):
             obj_points, img_points, image_size, None, None
         )
         method_map = {
-            "tsai": cv2.CALIB_HAND_EYE_TSAI,
-            "park": cv2.CALIB_HAND_EYE_PARK,
-            "horaud": cv2.CALIB_HAND_EYE_HORAUD,
-            "andreff": cv2.CALIB_HAND_EYE_ANDREFF,
-            "daniilidis": cv2.CALIB_HAND_EYE_DANIILIDIS,
+            "shah": cv2.CALIB_ROBOT_WORLD_HAND_EYE_SHAH,
+            "li": cv2.CALIB_ROBOT_WORLD_HAND_EYE_LI,
         }
-        r_cam2gripper, t_cam2gripper = cv2.calibrateHandEye(
-            r_gripper2base,
-            t_gripper2base,
+        r_base2target, t_base2target, r_base2cam, t_base2cam = cv2.calibrateRobotWorldHandEye(
             rvecs,
             tvecs,
+            r_gripper2base,
+            t_gripper2base,
             method=method_map[params["method"]],
         )
-        t_cam2gripper_vec = np.asarray(t_cam2gripper).reshape(3)
-        t_gripper2cam = (-r_cam2gripper.T @ t_cam2gripper).reshape(3)
+        t_base2cam_vec = np.asarray(t_base2cam).reshape(3)
+        r_cam2base = r_base2cam.T
+        t_cam2base = (-r_base2cam.T @ t_base2cam).reshape(3)
+        t_base2target_vec = np.asarray(t_base2target).reshape(3)
 
         data = {
+            "calibration_mode": "eye_to_hand",
+            "assumption": "camera is fixed outside; calibration target moves with the gripper; robot pose is gripper->base unless invert_gripper_pose is enabled",
             "method": params["method"],
             "euler_order": params["euler_order"],
             "invert_gripper_pose": bool(params["invert_gripper_pose"]),
             "camera_rms_error": float(rms),
             "camera_matrix": np.asarray(camera_matrix).tolist(),
             "dist_coeffs": np.asarray(dist_coeffs).reshape(-1).tolist(),
-            "R_cam2gripper": np.asarray(r_cam2gripper).tolist(),
-            "t_cam2gripper": t_cam2gripper_vec.tolist(),
-            "t_gripper2cam": t_gripper2cam.tolist(),
+            "R_base2cam": np.asarray(r_base2cam).tolist(),
+            "t_base2cam": t_base2cam_vec.tolist(),
+            "R_cam2base": np.asarray(r_cam2base).tolist(),
+            "t_cam2base": t_cam2base.tolist(),
+            "R_base2target": np.asarray(r_base2target).tolist(),
+            "t_base2target": t_base2target_vec.tolist(),
             "samples": len(r_gripper2base),
         }
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
 
-        r_text = np.array2string(np.asarray(r_cam2gripper), precision=8, suppress_small=True)
-        t_text = np.array2string(t_cam2gripper_vec, precision=8, suppress_small=True)
-        tg_text = np.array2string(t_gripper2cam, precision=8, suppress_small=True)
+        r_text = np.array2string(np.asarray(r_base2cam), precision=8, suppress_small=True)
+        t_text = np.array2string(t_base2cam_vec, precision=8, suppress_small=True)
+        tc_text = np.array2string(t_cam2base, precision=8, suppress_small=True)
         return (
             f"标定完成\n"
             f"有效样本: {len(r_gripper2base)}\n"
+            f"模式: 眼在手外 eye-to-hand\n"
             f"算法: {params['method']}\n"
             f"camera RMS error: {float(rms):.6f}\n"
-            f"R_cam2gripper:\n{r_text}\n"
-            f"t_cam2gripper(m): {t_text}\n"
-            f"||t_cam2gripper||: {float(np.linalg.norm(t_cam2gripper_vec)):.6f} m\n"
-            f"t_gripper2cam(m): {tg_text}\n"
+            f"R_base2cam:\n{r_text}\n"
+            f"t_base2cam(m): {t_text}\n"
+            f"||t_base2cam||: {float(np.linalg.norm(t_base2cam_vec)):.6f} m\n"
+            f"t_cam2base(m): {tc_text}\n"
             f"结果文件: {output_path}"
         )
 

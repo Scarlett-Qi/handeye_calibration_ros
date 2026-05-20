@@ -7,8 +7,8 @@ def generate_launch_description():
         [
             Node(
                 package="handeye_calibration_ros",
-                executable="handeye_gui.py",
-                name="handeye_gui",
+                executable="eye_to_hand_gui.py",
+                name="eye_to_hand_gui",
                 output="screen",
             ),
         ]

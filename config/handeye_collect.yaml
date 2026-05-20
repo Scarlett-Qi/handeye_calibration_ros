@@ -1,0 +1,9 @@
+handeye_sample_collector:
+  ros__parameters:
+    image_topic: "/camera/color/image_raw"
+    tool_pose_topic: "/handeye/tool_pose"
+    tool_pose_frame_id: "base"
+    output_dir: "./handeye_data"
+    image_prefix: "rgb"
+    pose_csv_name: "poses.csv"
+    save_service_name: "/handeye/save_sample"

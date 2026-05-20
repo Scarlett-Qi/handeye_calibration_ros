@@ -19,7 +19,7 @@ python3 -c "from PyQt5 import QtCore, QtGui, QtWidgets; print('PyQt5 ok')"
 
 ## 克隆编译
 
-在工作空间根目录编译：
+在工作空间目录编译：
 
 ```bash
 mkdir -p handeye_calibration_ws/src
@@ -69,9 +69,13 @@ ros2 launch handeye_calibration_ros gui.launch.py
 - 姿态坐标系
 - 下一步移动服务
 - 图像预览
-- 采集日志
+- 标定参数
+- 算法选择
+- 标定结果显示
 - `下一步移动` 按钮
 - `保存图片和姿态` 按钮
+- `重置采集` 按钮
+- `开始标定` 按钮
 
 点击 `保存图片和姿态` 后，会保存当前图像和当前机械臂末端位姿。
 
@@ -80,6 +84,16 @@ ros2 launch handeye_calibration_ros gui.launch.py
 /handeye/next_pose  std_srvs/srv/Trigger
 ```
 这个服务需要由具体机械臂的适配节点实现。它的作用是让机械臂移动到下一个标定位姿。如果暂时没有这个服务，也可以手动移动机械臂，然后只使用 GUI 的保存按钮。
+
+采集完成后，可以在 GUI 里设置棋盘格参数并点击 `开始标定`。GUI 会从当前输出路径读取图片和 `poses.csv`，计算手眼结果并保存 `handeye_result.yaml`。
+
+GUI 可选算法：
+
+- `tsai`
+- `park`
+- `horaud`
+- `andreff`
+- `daniilidis`
 
 采集结果目录示例：
 ```text
@@ -129,13 +143,12 @@ ros2 run handeye_calibration_ros hand_eye_calibrate.py \
 ```
 
 参数说明：
-
 - `--cols`：棋盘格内角点列数
 - `--rows`：棋盘格内角点行数
 - `--square`：棋盘格单格边长，单位为米
 - `--method`：手眼标定方法，例如 `tsai`、`park`、`horaud`、`andreff`、`daniilidis`
 
-## 验证
+<!-- ## 验证
 
 ```bash
 ros2 run handeye_calibration_ros handeye_validate_no_depth.py \
@@ -164,4 +177,4 @@ ros2 run handeye_calibration_ros handeye_pick_test.py \
 4. 移动机械臂到多个不同姿态，每个姿态下点击 `保存图片和姿态`。
 5. 建议采集至少 15 组有效样本。
 6. 运行标定脚本生成 `handeye_result.yaml`。
-7. 运行验证脚本检查结果。
+7. 运行验证脚本检查结果。 -->

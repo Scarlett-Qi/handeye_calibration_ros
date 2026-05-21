@@ -220,9 +220,6 @@ def run_hand_eye(args):
     print("R:\n", r_cam2gripper)
     print("t:\n", t_cam2gripper.reshape(3))
     print("||t|| (m):", float(np.linalg.norm(t_cam2gripper)))
-    t_gripper2cam = (-r_cam2gripper.T @ t_cam2gripper).reshape(3)
-    print("t_gripper2cam:\n", t_gripper2cam)
-    print("||t_gripper2cam|| (m):", float(np.linalg.norm(t_gripper2cam)))
 
     if args.scan_orders:
         print("\n=== Euler Order Scan (translation norm only) ===")
@@ -265,7 +262,6 @@ def run_hand_eye(args):
             "dist_coeffs": np.asarray(dist).reshape(-1).tolist(),
             "R_cam2gripper": np.asarray(r_cam2gripper).tolist(),
             "t_cam2gripper": np.asarray(t_cam2gripper).reshape(-1).tolist(),
-            "t_gripper2cam": t_gripper2cam.tolist(),
             "samples": len(r_gripper2base),
         }
         out.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")

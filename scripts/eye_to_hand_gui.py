@@ -21,7 +21,7 @@ from std_srvs.srv import Trigger
 import cv2
 import yaml
 
-from hand_eye_calibrate import ALL_EULER_ORDERS, collect_calib_data, load_robot_poses
+from hand_eye_calibrate import ALL_EULER_ORDERS, collect_calib_data, invert_rt, load_robot_poses
 
 
 os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = QtCore.QLibraryInfo.location(QtCore.QLibraryInfo.PluginsPath)
@@ -149,7 +149,8 @@ class ImageView(QtWidgets.QLabel):
     def __init__(self):
         super().__init__("等待图像...")
         self.setAlignment(QtCore.Qt.AlignCenter)
-        self.setMinimumSize(480, 320)
+        self.setMinimumSize(240, 135)
+        self.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Ignored)
         self.setStyleSheet("background:#202020;color:#e6e6e6;border:1px solid #404040;")
         self._pixmap = QtGui.QPixmap()
 
@@ -168,7 +169,10 @@ class ImageView(QtWidgets.QLabel):
     def _update_pixmap(self):
         if self._pixmap.isNull():
             return
-        scaled = self._pixmap.scaled(self.size(), QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
+        target_size = self.contentsRect().size()
+        if target_size.width() <= 0 or target_size.height() <= 0:
+            return
+        scaled = self._pixmap.scaled(target_size, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
         self.setPixmap(scaled)
 
 
@@ -183,8 +187,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.last_image_count = -1
 
         self.setWindowTitle("Eye-to-Hand Calibration Collector")
-        self.resize(1120, 1100)
-        self.setMinimumSize(1000, 1400)
+        self.resize(980, 760)
+        self.setMinimumSize(820, 620)
 
         self.output_dir = QtWidgets.QLineEdit("./handeye_data")
         self.image_prefix = QtWidgets.QLineEdit("rgb")
@@ -210,11 +214,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.calib_euler_order = QtWidgets.QComboBox()
         self.calib_euler_order.addItems(ALL_EULER_ORDERS)
         self.calib_euler_order.setCurrentText("zyx")
-        self.calib_invert = QtWidgets.QCheckBox("反转机械臂位姿")
+        self.calib_invert = QtWidgets.QCheckBox("机械臂位姿是 base->end，计算时取逆")
+        self.calib_invert.setChecked(True)
         self.calib_output = QtWidgets.QLineEdit("eye_to_hand_result.yaml")
         self.calib_result = QtWidgets.QPlainTextEdit()
         self.calib_result.setReadOnly(True)
-        self.calib_result.setFixedHeight(120)
+        self.calib_result.setFixedHeight(90)
         self.calib_result.setPlaceholderText("标定结果")
 
         self.image_status = QtWidgets.QLabel("图像: 0")
@@ -222,6 +227,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.saved_status = QtWidgets.QLabel("已保存: 0")
         self.status = QtWidgets.QLabel("未连接")
         self.image_view = ImageView()
+        self.saved_image_view = ImageView()
+        self.saved_image_view.setText("等待保存图片...")
 
         self._build_ui()
         self.next_done.connect(self._on_next_done)
@@ -277,16 +284,16 @@ class MainWindow(QtWidgets.QMainWindow):
 
         action_row = QtWidgets.QHBoxLayout()
         next_button = QtWidgets.QPushButton("下一步移动")
-        next_button.setMinimumHeight(42)
+        next_button.setMinimumHeight(32)
         next_button.clicked.connect(self.next_pose)
         save_button = QtWidgets.QPushButton("保存图片和姿态")
-        save_button.setMinimumHeight(42)
+        save_button.setMinimumHeight(32)
         save_button.clicked.connect(self.save_sample)
         reset_button = QtWidgets.QPushButton("重置采集")
-        reset_button.setMinimumHeight(42)
+        reset_button.setMinimumHeight(32)
         reset_button.clicked.connect(self.reset_collection)
         close_button = QtWidgets.QPushButton("退出")
-        close_button.setMinimumHeight(42)
+        close_button.setMinimumHeight(32)
         close_button.clicked.connect(self.close)
         action_row.addWidget(next_button)
         action_row.addWidget(save_button)
@@ -296,8 +303,17 @@ class MainWindow(QtWidgets.QMainWindow):
         root.addLayout(action_row)
 
         preview_group = QtWidgets.QGroupBox("图像预览")
-        preview_layout = QtWidgets.QVBoxLayout(preview_group)
-        preview_layout.addWidget(self.image_view)
+        preview_group.setMaximumHeight(280)
+        preview_group.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Preferred)
+        preview_layout = QtWidgets.QHBoxLayout(preview_group)
+        live_group = QtWidgets.QGroupBox("实时图像")
+        live_layout = QtWidgets.QVBoxLayout(live_group)
+        live_layout.addWidget(self.image_view)
+        saved_group = QtWidgets.QGroupBox("最新保存")
+        saved_layout = QtWidgets.QVBoxLayout(saved_group)
+        saved_layout.addWidget(self.saved_image_view)
+        preview_layout.addWidget(live_group)
+        preview_layout.addWidget(saved_group)
         root.addWidget(preview_group, stretch=1)
 
         calib_group = QtWidgets.QGroupBox("标定设置 / 结果")
@@ -394,6 +410,7 @@ class MainWindow(QtWidgets.QMainWindow):
             return
 
         self._append_pose(csv_path, image_name, pose, stamp_ns)
+        self.saved_image_view.set_cv_image(bgr)
         self.saved_status.setText(f"已保存: {self.sample_index}")
         text = f"已保存样本: {image_path}"
         self.status.setText(text)
@@ -464,9 +481,18 @@ class MainWindow(QtWidgets.QMainWindow):
             "shah": cv2.CALIB_ROBOT_WORLD_HAND_EYE_SHAH,
             "li": cv2.CALIB_ROBOT_WORLD_HAND_EYE_LI,
         }
-        r_base2target, t_base2target, r_base2cam, t_base2cam = cv2.calibrateRobotWorldHandEye(
-            rvecs,
-            tvecs,
+        r_cam2target = []
+        t_cam2target = []
+        for rvec, tvec in zip(rvecs, tvecs):
+            r_target2cam, _ = cv2.Rodrigues(rvec)
+            t_target2cam = np.asarray(tvec, dtype=np.float64).reshape(3, 1)
+            r_inv, t_inv = invert_rt(r_target2cam, t_target2cam)
+            r_cam2target.append(r_inv)
+            t_cam2target.append(t_inv)
+
+        r_base2cam, t_base2cam, r_gripper2target, t_gripper2target = cv2.calibrateRobotWorldHandEye(
+            r_cam2target,
+            t_cam2target,
             r_gripper2base,
             t_gripper2base,
             method=method_map[params["method"]],
@@ -474,11 +500,11 @@ class MainWindow(QtWidgets.QMainWindow):
         t_base2cam_vec = np.asarray(t_base2cam).reshape(3)
         r_cam2base = r_base2cam.T
         t_cam2base = (-r_base2cam.T @ t_base2cam).reshape(3)
-        t_base2target_vec = np.asarray(t_base2target).reshape(3)
+        t_gripper2target_vec = np.asarray(t_gripper2target).reshape(3)
 
         data = {
             "calibration_mode": "eye_to_hand",
-            "assumption": "camera is fixed outside; calibration target moves with the gripper; robot pose is gripper->base unless invert_gripper_pose is enabled",
+            "assumption": "camera is fixed outside; calibration target moves with the gripper; common robot pose is base->end and is inverted before OpenCV when invert_gripper_pose is enabled",
             "method": params["method"],
             "euler_order": params["euler_order"],
             "invert_gripper_pose": bool(params["invert_gripper_pose"]),
@@ -489,8 +515,8 @@ class MainWindow(QtWidgets.QMainWindow):
             "t_base2cam": t_base2cam_vec.tolist(),
             "R_cam2base": np.asarray(r_cam2base).tolist(),
             "t_cam2base": t_cam2base.tolist(),
-            "R_base2target": np.asarray(r_base2target).tolist(),
-            "t_base2target": t_base2target_vec.tolist(),
+            "R_gripper2target": np.asarray(r_gripper2target).tolist(),
+            "t_gripper2target": t_gripper2target_vec.tolist(),
             "samples": len(r_gripper2base),
         }
         output_path.parent.mkdir(parents=True, exist_ok=True)

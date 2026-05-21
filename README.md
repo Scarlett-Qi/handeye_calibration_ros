@@ -109,8 +109,9 @@ ros2 launch handeye_calibration_ros eye_to_hand_gui.launch.py
 
 - 相机固定在外部
 - 标定板随机械臂末端运动
-- `poses.csv` 中记录的是常见的 `gripper -> base` 末端位姿
-- 如果你的机械臂提供的是反方向位姿，可以勾选 `反转机械臂位姿`
+- 图像中检测得到的是 `target -> camera`，程序会自动取逆为 `camera -> target` 后参与计算
+- 大多数机械臂发布的是 `base -> end` 末端位姿，GUI 默认勾选 `机械臂位姿是 base->end，计算时取逆`
+- 如果你的 `poses.csv` 已经是 `end -> base` 方向，可以取消这个勾选
 
 输出结果默认保存为：
 
@@ -124,6 +125,8 @@ eye_to_hand_result.yaml
 - `t_base2cam`
 - `R_cam2base`
 - `t_cam2base`
+- `R_gripper2target`
+- `t_gripper2target`
 
 Eye-to-Hand GUI 可选算法：
 
